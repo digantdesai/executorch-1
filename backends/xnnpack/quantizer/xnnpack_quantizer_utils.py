@@ -285,18 +285,17 @@ def _annotate_linear_relu(
     return annotated_partitions
 
 
-@register_annotator("conv")
-def _annotate_conv(
+def _do_annotate_conv(
     gm: torch.fx.GraphModule,
     quantization_config: Optional[QuantizationConfig],
     filter_fn: Optional[Callable[[Node], bool]] = None,
+    is_conv_transpose: bool = False,
 ) -> Optional[list[list[Node]]]:
     annotated_partitions = []
+    is_conv_node = _is_conv_transpose_node if is_conv_transpose else _is_conv_node
+
     for n in gm.graph.nodes:
-        if n.op != "call_function" or n.target not in [
-            torch.ops.aten.conv1d.default,
-            torch.ops.aten.conv2d.default,
-        ]:
+        if not is_conv_node(n):
             continue
         conv_node = n
 
@@ -391,6 +390,27 @@ def _do_annotate_conv_relu(
         _mark_nodes_as_annotated(partition)
         annotated_partitions.append(partition)
     return annotated_partitions
+
+@register_annotator("conv")
+def _annotate_conv(
+    gm: torch.fx.GraphModule,
+    quantization_config: Optional[QuantizationConfig],
+    filter_fn: Optional[Callable[[Node], bool]] = None,
+) -> Optional[list[list[Node]]]:
+    return _do_annotate_conv(
+        gm, quantization_config, filter_fn, is_conv_transpose=False
+    )
+
+
+@register_annotator("conv_transpose")
+def _annotate_transpose_conv(
+    gm: torch.fx.GraphModule,
+    quantization_config: Optional[QuantizationConfig],
+    filter_fn: Optional[Callable[[Node], bool]] = None,
+) -> Optional[list[list[Node]]]:
+    return _do_annotate_conv(
+        gm, quantization_config, filter_fn, is_conv_transpose=True
+    )
 
 
 @register_annotator("conv_relu")
